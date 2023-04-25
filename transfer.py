@@ -17,12 +17,13 @@ from skimage.util import montage
 from skimage.color import label2rgb
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
+import argparse
 import pandas as pd
 import os
 import pdb
 
 
-DATAROOT = 'C:/Users/meicholtz/Documents/csc4510/data/shirts'  # TODO: edit this path
+DATAROOT = ''  # TODO: edit this path
 
 
 def main():
