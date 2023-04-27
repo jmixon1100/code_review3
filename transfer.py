@@ -22,40 +22,55 @@ import pandas as pd
 import os
 import pdb
 
+ROOT = os.path.dirname(os.path.abspath(__file__))
 
-DATAROOT = ''  # TODO: edit this path
+parser = argparse.ArgumentParser(
+    description="<--------------EDIT_ME------------->")
+parser.add_argument('-r', '--ROOT', help="root directory location",default=os.path.join(ROOT, './data'))
+parser.add_argument('-v', '--verbose', action='store_true',help="display updates in terminal")
 
+DATAROOT = ROOT
 
-def main():
+def main(**kwargs):
+    data_path = kwargs['ROOT']
     # Load dataset
-    data, labels = load(DATAROOT, show=False)
+    data, labels = load(data_path, show=False)
     labels, y = np.unique(labels, return_inverse=True)
-
+    
     # TODO: Split data into random shuffled training (75%) and testing (25%) sets
-    xtrain, xtest, ytrain, ytest = ?
-
+    xtrain, xtest, ytrain, ytest = train_test_split(data,y,test_size=0.25)
+    
     # TODO: Preprocess image data to match Xception requirements
     # (see keras.applications.xception.preprocess_input)
-    xtrain = ?
-    xtest = ?
+    xtrain = tf.keras.applications.xception.preprocess_input(xtrain)
+    xtest = tf.keras.applications.xception.preprocess_input(xtest)
 
+    # pdb.set_trace()
     # TODO: Load the Xception model from Keras, use weights from "imagenet" and do not
     # include the top (output) layer
-    xception = ?  # this is the line to edit
+    xception = tf.keras.applications.Xception(
+    include_top=False,
+    weights='imagenet',
+    input_shape= xtrain.shape[1:]
+    )
 
+    # pdb.set_trace()
     # Change the end of the network to match new dataset (this is what will be learned!)
     avg = keras.layers.GlobalAveragePooling2D()(xception.output)
     output = keras.layers.Dense(len(labels), activation='softmax')(avg)
-    model = keras.Model() # TODO: Make a new model with the old xception input and the new dense output
-    model.summary()
+    # TODO: Make a new model with the old xception input and the new dense output
+    
+    model = keras.Model(xception.input,output)
 
+    model.summary()
+    
     # TODO: Freeze layers in xception
     for layer in xception.layers:
-        pass
+        layer.trainable = False
 
     # Compile the model
     # TODO: Use the SGD optimizer with learning rate of 0.1 and momentum of 0.9
-    optimizer = ?
+    optimizer = tf.keras.optimizers.experimental.SGD(learning_rate = 0.1,momentum=0.9)
     model.compile(loss='sparse_categorical_crossentropy',
                   optimizer=optimizer,
                   metrics=['accuracy'])
@@ -63,12 +78,19 @@ def main():
     # Create callbacks
     filename = os.path.join("transfer.h5")
     checkpoint = keras.callbacks.ModelCheckpoint(filename, save_best_only=True)
-    earlystopping = keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)
-
+    earlystopping = keras.callbacks.EarlyStopping(
+        patience=10, restore_best_weights=True)
+    pdb.set_trace()
     # TODO: Train the model using the fit method; use a batch size of 5, 100 epochs, the callbacks created above, and the test data for validation
-    history = ?
+    history = model.fit(xtrain, ytrain,
+                        epochs=100,
+                        batch_size=5,
+                        validation_data=(xtest, ytest),
+                        callbacks=(checkpoint,earlystopping),
+                        verbose=1)
 
     # Evaluate the model
+
     model.evaluate(xtest, ytest)
 
     # TODO: Compute the confusion matrix and show which shirts were misclassified
@@ -90,6 +112,7 @@ def load(directory=DATAROOT, show=False):
             img *= 255
         x[i] = np.array(tf.image.resize(img, sz))
 
+
     # Show montage of images (optional)
     if show:
         plt.figure(1)
@@ -107,4 +130,4 @@ def load(directory=DATAROOT, show=False):
 
 
 if __name__ == '__main__':
-    main()
+    main(**vars(parser.parse_args()))
