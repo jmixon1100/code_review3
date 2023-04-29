@@ -7,70 +7,71 @@
 # 2. https://keras.io/api/applications/xception/
 # 3. https://keras.io/guides/transfer_learning/
 
+# Johnny Mixon and Raymond Riddell
+
 import tensorflow as tf
 from tensorflow import keras
 import numpy as np
 from matplotlib.image import imread
 import matplotlib.pyplot as plt
-from matplotlib import cm
 from skimage.util import montage
-from skimage.color import label2rgb
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 import argparse
-import pandas as pd
 import os
 import pdb
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
 parser = argparse.ArgumentParser(
-    description="<--------------EDIT_ME------------->")
-parser.add_argument('-r', '--ROOT', help="root directory location",default=os.path.join(ROOT, './data'))
-parser.add_argument('-v', '--verbose', action='store_true',help="display updates in terminal")
+    description="Using tranfer learning to correcly identify who would wear a particular shirt")
+parser.add_argument('-r', '--ROOT', help="root directory location",
+                    default=os.path.join(ROOT, './data'))
+parser.add_argument('-v', '--verbose', action='store_true',
+                    help="display updates in terminal")
 
 DATAROOT = ROOT
+
 
 def main(**kwargs):
     data_path = kwargs['ROOT']
     # Load dataset
-    data, labels = load(data_path, show=False)
+    data, labels = load(data_path, show=kwargs['verbose'])
     labels, y = np.unique(labels, return_inverse=True)
-    
-    # TODO: Split data into random shuffled training (75%) and testing (25%) sets
-    xtrain, xtest, ytrain, ytest = train_test_split(data,y,test_size=0.25)
-    
-    # TODO: Preprocess image data to match Xception requirements
-    # (see keras.applications.xception.preprocess_input)
+
+    # Split data into random shuffled training (75%) and testing (25%) sets
+    xtrain, xtest, ytrain, ytest = train_test_split(
+        data, y, test_size=0.25, random_state=1)
+
+    # Preprocess image data to match Xception requirements
     xtrain = tf.keras.applications.xception.preprocess_input(xtrain)
     xtest = tf.keras.applications.xception.preprocess_input(xtest)
 
-    # pdb.set_trace()
-    # TODO: Load the Xception model from Keras, use weights from "imagenet" and do not
-    # include the top (output) layer
+    # Load the Xception model from Keras
     xception = tf.keras.applications.Xception(
-    include_top=False,
-    weights='imagenet',
-    input_shape= xtrain.shape[1:]
+        include_top=False,
+        weights='imagenet',
+        input_shape=xtrain.shape[1:]
     )
 
-    # pdb.set_trace()
     # Change the end of the network to match new dataset (this is what will be learned!)
+
     avg = keras.layers.GlobalAveragePooling2D()(xception.output)
     output = keras.layers.Dense(len(labels), activation='softmax')(avg)
-    # TODO: Make a new model with the old xception input and the new dense output
-    
-    model = keras.Model(xception.input,output)
+
+    #Make a new model with the old xception input and the new dense output
+
+    model = keras.Model(xception.input, output)
 
     model.summary()
-    
-    # TODO: Freeze layers in xception
+    input("Press Enter")
+    # Freeze layers in xception
     for layer in xception.layers:
         layer.trainable = False
 
     # Compile the model
-    # TODO: Use the SGD optimizer with learning rate of 0.1 and momentum of 0.9
-    optimizer = tf.keras.optimizers.experimental.SGD(learning_rate = 0.1,momentum=0.9)
+    optimizer = tf.keras.optimizers.experimental.SGD(
+        learning_rate=0.1, momentum=0.9)
     model.compile(loss='sparse_categorical_crossentropy',
                   optimizer=optimizer,
                   metrics=['accuracy'])
@@ -80,21 +81,38 @@ def main(**kwargs):
     checkpoint = keras.callbacks.ModelCheckpoint(filename, save_best_only=True)
     earlystopping = keras.callbacks.EarlyStopping(
         patience=10, restore_best_weights=True)
-    pdb.set_trace()
-    # TODO: Train the model using the fit method; use a batch size of 5, 100 epochs, the callbacks created above, and the test data for validation
+
+    # Train the model using the fit method; use a batch size of 5, 100 epochs, the callbacks created above, and the test data for validation
     history = model.fit(xtrain, ytrain,
                         epochs=100,
                         batch_size=5,
+                        shuffle=False,
+                        use_multiprocessing=False,
                         validation_data=(xtest, ytest),
-                        callbacks=(checkpoint,earlystopping),
-                        verbose=1)
+                        callbacks=(checkpoint, earlystopping),
+                        verbose=kwargs['verbose'])
 
     # Evaluate the model
-
     model.evaluate(xtest, ytest)
 
-    # TODO: Compute the confusion matrix and show which shirts were misclassified
-    pdb.set_trace()
+    #get the predictions from the network 
+    pred = model.predict(xtest)
+    # sort each row by max since the network returns a confidence value for each class as a 2d array
+    pred = np.argmax(pred, axis=1)
+
+    # Compute the confusion matrix and show which shirts were misclassified
+    print(confusion_matrix(pred, ytest))
+
+    #create a mask of the misclassified shirts
+    wrong_mask = pred != ytest
+    #apply mask to xtest to get the incorrectly classified shirts
+    wrong_img = xtest[wrong_mask]
+
+    #just in case
+    if len(wrong_img != 0):
+        show_images((wrong_img))
+    else:
+        print("no wrong images!")
 
 
 def load(directory=DATAROOT, show=False):
@@ -112,7 +130,6 @@ def load(directory=DATAROOT, show=False):
             img *= 255
         x[i] = np.array(tf.image.resize(img, sz))
 
-
     # Show montage of images (optional)
     if show:
         plt.figure(1)
@@ -121,12 +138,22 @@ def load(directory=DATAROOT, show=False):
         plt.title('Sample Images')
         plt.xticks([])
         plt.yticks([])
-        plt.show()
+        plt.show(block=False)
 
     # Extract labels from filenames
     y = np.array([file.split('.')[0][:-2] for file in files])
-
     return x, y
+
+
+def show_images(x):
+    '''shows incorrectly identified images'''
+    plt.figure(2)
+    m = montage(x, fill=np.zeros(3), padding_width=1, multichannel=True)
+    plt.imshow((m / 2 + 0.5)) # image color data was ranging from -1 to 1 so did this to get it within bounds
+    plt.title('Wrong Images')
+    plt.xticks([])
+    plt.yticks([])
+    plt.show(block = True)
 
 
 if __name__ == '__main__':
